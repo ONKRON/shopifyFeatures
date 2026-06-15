@@ -200,28 +200,43 @@ app.get("/chars", async (req, res) => {
 app.get("/specifications", async (req, res) => {
   let { name, model, product_id, country, specification_ids } = req.query;
 
-  const DEFAULT_SPECIFICATION_IDS = [22, 24, 709, 786];
+  const DEFAULT_SPECIFICATION_IDS = [22, 24, 709, 786, 789];
   const SPECIFICATION_FIELDS = {
     709: "diagonal_min",
     22: "diagonal_max",
     24: "vesa",
     786: "max_load",
+    789: "curved_monitor",
   };
-  const CATEGORY_TYPES = {
-    "Потолочные кронштейны": "Celling",
-    "Настенные кронштейны": "Wall",
-    "Стойки для телевизоров": "Floor",
-    "Настольные кронштейны": "Desktop",
-    "Кронштейны для проекторов": "Projector",
-    "Товары для дома": "Home",
+  const CATEGORY_MAP = {
+    floor: [5],
+    wall: [1],
+    ceiling: [2],
+    desktop: [3],
   };
-  const ALLOWED_CATEGORY_TYPES = new Set([
-    "Floor",
-    "Wall",
-    "Celling",
-    "Desktop",
-  ]);
-  const EXCLUDED_CATEGORY_TYPES = new Set([]);
+  const SUBCATEGORY_MAP = {
+    wall: {
+      Fixed: [6],
+      Tilting: [7],
+      "Full-motion": [8],
+    },
+    floor: {
+      Interior: [49],
+      Mobile: [133],
+      Motorized: [161],
+    },
+    desktop: {
+      Monitor: [145, 38, 39, 40, 43, 41],
+      "Retractable mount": [134],
+      "Desktop TV stand": [45],
+    },
+  };
+  const MONITOR_CATEGORY_MAP = {
+    Single: [38],
+    Dual: [39],
+    "Three plus": [40],
+  };
+  const CATEGORY_PRIORITY = ["desktop", "wall", "ceiling", "floor"];
 
   function formatSpecificationValue(value) {
     const trimmedValue = value.trim();
@@ -232,6 +247,59 @@ app.get("/specifications", async (req, res) => {
     }
 
     return trimmedValue;
+  }
+
+  function formatCurvedMonitorValue(value) {
+    const normalizedValue = value.trim().toLowerCase();
+
+    if (["да", "yes", "true", "1"].includes(normalizedValue)) {
+      return "Yes";
+    }
+
+    if (["нет", "no", "false", "0"].includes(normalizedValue)) {
+      return "No";
+    }
+
+    return value.trim();
+  }
+
+  function hasCategoryId(categoryIds, ids) {
+    return ids.some((id) => categoryIds.has(id));
+  }
+
+  function findMatchingLabels(categoryIds, categoryMap) {
+    return Object.entries(categoryMap)
+      .filter(([, ids]) => hasCategoryId(categoryIds, ids))
+      .map(([label]) => label);
+  }
+
+  function resolveCategory(categoryIds) {
+    const category = CATEGORY_PRIORITY.find((type) => {
+      const subcategories = SUBCATEGORY_MAP[type] || {};
+      const subcategoryIds = Object.values(subcategories).flat();
+
+      return (
+        hasCategoryId(categoryIds, CATEGORY_MAP[type] || []) ||
+        hasCategoryId(categoryIds, subcategoryIds)
+      );
+    });
+
+    if (!category) return null;
+
+    const subcategories = findMatchingLabels(
+      categoryIds,
+      SUBCATEGORY_MAP[category] || {},
+    );
+    const monitorCategories =
+      category === "desktop"
+        ? findMatchingLabels(categoryIds, MONITOR_CATEGORY_MAP)
+        : [];
+
+    return {
+      category,
+      subcategory: subcategories.join(", "),
+      monitor_category: monitorCategories.join(", "),
+    };
   }
 
   const languageId = country || 1;
@@ -275,14 +343,12 @@ app.get("/specifications", async (req, res) => {
       a.specification,
       a.specifications_id,
       a.products_specification_id,
-      c.products_type
+      pc.categories_id
     FROM products_specifications AS a
     JOIN products AS p
       ON p.products_id = a.products_id
     LEFT JOIN products_to_categories AS pc
       ON pc.products_id = a.products_id
-    LEFT JOIN categories AS c
-      ON c.categories_id = pc.categories_id
     WHERE ${where.join(" AND ")}
     ORDER BY a.products_id ASC, a.products_specification_id ASC
   `;
@@ -296,34 +362,22 @@ app.get("/specifications", async (req, res) => {
       if (!productsMap.has(row.products_id)) {
         productsMap.set(row.products_id, {
           product: row.products_model,
-          category: "",
-          categoryTypes: [],
-          isExcludedCategory: false,
+          categoryIds: new Set(),
         });
       }
 
       const product = productsMap.get(row.products_id);
-      const rawCategory = row.products_type?.trim();
-      const category = CATEGORY_TYPES[rawCategory] || rawCategory;
-
-      if (EXCLUDED_CATEGORY_TYPES.has(category)) {
-        product.isExcludedCategory = true;
-      }
-
-      if (
-        category &&
-        category !== "0" &&
-        ALLOWED_CATEGORY_TYPES.has(category) &&
-        !product.categoryTypes.includes(category)
-      ) {
-        product.categoryTypes.push(category);
-        product.category = product.categoryTypes.join(", ");
+      if (row.categories_id) {
+        product.categoryIds.add(Number(row.categories_id));
       }
 
       const fieldName =
         SPECIFICATION_FIELDS[row.specifications_id] ||
         `spec_${row.specifications_id}`;
-      const value = formatSpecificationValue(row.specification);
+      const value =
+        fieldName === "curved_monitor"
+          ? formatCurvedMonitorValue(row.specification)
+          : formatSpecificationValue(row.specification);
 
       if (fieldName === "vesa") {
         if (!product.vesa) product.vesa = [];
@@ -334,10 +388,29 @@ app.get("/specifications", async (req, res) => {
     }
 
     const products = Array.from(productsMap.values())
-      .filter(({ categoryTypes, isExcludedCategory }) => {
-        return categoryTypes.length && !isExcludedCategory;
+      .map(({ categoryIds, product, ...specifications }) => {
+        const category = resolveCategory(categoryIds);
+        if (!category) return null;
+
+        const responseProduct = {
+          product,
+          category: category.category,
+        };
+
+        if (category.subcategory) {
+          responseProduct.subcategory = category.subcategory;
+        }
+
+        if (category.monitor_category) {
+          responseProduct.monitor_category = category.monitor_category;
+        }
+
+        return {
+          ...responseProduct,
+          ...specifications,
+        };
       })
-      .map(({ categoryTypes, isExcludedCategory, ...product }) => product);
+      .filter(Boolean);
 
     res.json({
       count: products.length,
