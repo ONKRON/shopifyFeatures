@@ -215,8 +215,13 @@ app.get("/specifications", async (req, res) => {
     "Кронштейны для проекторов": "Projector",
     "Товары для дома": "Home",
   };
-  const ALLOWED_CATEGORY_TYPES = new Set(["Floor", "Wall", "Celling"]);
-  const EXCLUDED_CATEGORY_TYPES = new Set(["Desktop"]);
+  const ALLOWED_CATEGORY_TYPES = new Set([
+    "Floor",
+    "Wall",
+    "Celling",
+    "Desktop",
+  ]);
+  const EXCLUDED_CATEGORY_TYPES = new Set([]);
 
   function formatSpecificationValue(value) {
     const trimmedValue = value.trim();
