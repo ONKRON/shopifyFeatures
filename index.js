@@ -75,12 +75,24 @@ app.get("/short", async (req, res) => {
 });
 
 app.get("/chars", async (req, res) => {
-  let { name, country } = req.query;
+  let { name, model, product_id, country } = req.query;
 
-  if (!name || !country)
+  if ((!name && !model && !product_id) || !country)
     return res.status(400).json({ error: "Missing parameters" });
 
-  name = decodeURIComponent(name).trim();
+  const productRef = model || name;
+  if (productRef) {
+    model = decodeURIComponent(productRef).trim();
+  }
+
+  if (product_id) {
+    product_id = Number(product_id);
+    if (!Number.isInteger(product_id)) {
+      return res.status(400).json({ error: "Invalid product_id" });
+    }
+  }
+
+  const productFilter = product_id ? "a.products_id = ?" : "p.products_model = ?";
 
   const sql = `
     SELECT 
@@ -91,18 +103,19 @@ app.get("/chars", async (req, res) => {
       a.products_specification_id
     FROM 
       products_specifications AS a
+    JOIN products AS p ON p.products_id = a.products_id
     JOIN specification_description AS b ON b.specifications_id = a.specifications_id
     JOIN specifications AS c ON c.specifications_id = a.specifications_id
-    JOIN products_description AS d ON d.products_id = a.products_id
     WHERE 
-      d.products_name = ? AND
       b.language_id = ? AND
       a.language_id = ? AND
+      p.products_status = 1 AND
+      ${productFilter} AND
       c.show_data_sheet = 'True'
     ORDER BY c.specification_sort_order ASC
   `;
 
-  const values = [name, country, country];
+  const values = [country, country, product_id || model];
 
   const LANGUAGE_LOCALE_MAP = {
     1: "ru-RU",
