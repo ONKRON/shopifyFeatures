@@ -111,6 +111,9 @@ app.get("/chars", async (req, res) => {
       a.language_id = ? AND
       p.products_status = 1 AND
       ${productFilter} AND
+      a.specification IS NOT NULL AND
+      TRIM(a.specification) <> '' AND
+      LOWER(TRIM(a.specification)) <> 'array' AND
       c.show_data_sheet = 'True'
     ORDER BY c.specification_sort_order ASC
   `;
@@ -158,7 +161,7 @@ app.get("/chars", async (req, res) => {
       const specId = row.specifications_id;
       const specIndex = row.products_specification_id;
 
-      if (!specValue || specValue === "Array") continue;
+      if (!specValue || specValue.toLowerCase() === "array") continue;
 
       if (!grouped[specName]) {
         grouped[specName] = { valuesMap: new Map(), suffix, specId };
@@ -331,7 +334,7 @@ app.get("/specifications", async (req, res) => {
     "a.language_id = ?",
     "a.specification IS NOT NULL",
     "TRIM(a.specification) <> ''",
-    "a.specification <> 'Array'",
+    "LOWER(TRIM(a.specification)) <> 'array'",
     `a.specifications_id IN (${specificationIds.map(() => "?").join(", ")})`,
   ];
   const values = [languageId, ...specificationIds];
