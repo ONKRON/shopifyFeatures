@@ -93,7 +93,9 @@ app.get("/chars", async (req, res) => {
     }
   }
 
-  const productFilter = product_id ? "a.products_id = ?" : "p.products_model = ?";
+  const productFilter = product_id
+    ? "a.products_id = ?"
+    : "p.products_model = ?";
 
   const sql = `
     SELECT 
@@ -128,8 +130,9 @@ app.get("/chars", async (req, res) => {
     4: "it-IT",
     5: "es-ES",
     6: "de-DE",
-    7: "pl-PL",
-    8: "tr-TR",
+    7: "en-GB",
+    8: "pl-PL",
+    9: "tr-TR",
   };
 
   const locale = LANGUAGE_LOCALE_MAP[country] || "en-US";
