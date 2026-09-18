@@ -16,6 +16,7 @@ const allowed = new Set([
   "https://onkron.fr",
   "https://onkron.it",
   "https://onkron.es",
+  "https://onkron.com.tr",
 ]);
 
 app.use(
@@ -128,6 +129,7 @@ app.get("/chars", async (req, res) => {
     5: "es-ES",
     6: "de-DE",
     7: "pl-PL",
+    8: "tr-TR",
   };
 
   const locale = LANGUAGE_LOCALE_MAP[country] || "en-US";
