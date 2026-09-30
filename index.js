@@ -112,7 +112,7 @@ app.get("/chars", async (req, res) => {
     WHERE 
       b.language_id = ? AND
       a.language_id = ? AND
-      p.products_status = 1 AND
+--       p.products_status = 1 AND
       ${productFilter} AND
       a.specification IS NOT NULL AND
       TRIM(a.specification) <> '' AND
