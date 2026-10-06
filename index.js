@@ -49,16 +49,38 @@ app.get("/short", async (req, res) => {
 
   name = decodeURIComponent(name).trim();
 
-  const sql = `
-    SELECT *
-    FROM products_description
-    WHERE products_name = ? AND language_id = ?
-  `;
-
   const values = [name, country];
 
   try {
-    const [rows] = await pool.query(sql, values);
+    const modelSql = `
+      SELECT pd.products_short_description
+      FROM products_description AS pd
+      JOIN products AS p ON p.products_id = pd.products_id
+      WHERE p.products_model = ? AND pd.language_id = ?
+      ORDER BY
+        (pd.products_short_description IS NULL OR TRIM(pd.products_short_description) = '') ASC,
+        p.products_status DESC,
+        p.products_id DESC
+      LIMIT 1
+    `;
+
+    let [rows] = await pool.query(modelSql, values);
+
+    if (rows.length === 0) {
+      const nameSql = `
+        SELECT pd.products_short_description
+        FROM products_description AS pd
+        JOIN products AS p ON p.products_id = pd.products_id
+        WHERE pd.products_name = ? AND pd.language_id = ?
+        ORDER BY
+          (pd.products_short_description IS NULL OR TRIM(pd.products_short_description) = '') ASC,
+          p.products_status DESC,
+          p.products_id DESC
+        LIMIT 1
+      `;
+
+      [rows] = await pool.query(nameSql, values);
+    }
 
     if (rows.length === 0) {
       return res.status(404).json({
